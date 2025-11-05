@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { useState, useEffect, useRef } from "react";
 import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 const Simulation = () => {
   const [n1, setN1] = useState(1.48); // Core refractive index
@@ -13,8 +14,12 @@ const Simulation = () => {
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
     renderer: THREE.WebGLRenderer;
+    controls: OrbitControls;
     fiber: THREE.Group;
-    lightRays: THREE.Line[];
+    lightRays: THREE.Group[];
+    acceptedRays: THREE.Group[];
+    rejectedRays: THREE.Group[];
+    acceptanceCone: THREE.Mesh;
     animationId: number;
   } | null>(null);
 
@@ -35,12 +40,19 @@ const Simulation = () => {
       0.1,
       1000
     );
-    camera.position.set(0, 3, 8);
+    camera.position.set(0, 4, 10);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(canvasRef.current.clientWidth, 700);
     canvasRef.current.appendChild(renderer.domElement);
+
+    // Add OrbitControls for interactive camera
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 5;
+    controls.maxDistance = 20;
 
     // Lighting
     const ambientLight = new THREE.AmbientLight(0x404040, 1);
@@ -85,51 +97,117 @@ const Simulation = () => {
 
     scene.add(fiberGroup);
 
-    // Create light rays
-    const lightRays: THREE.Line[] = [];
-    const createLightRay = (startAngle: number, color: number) => {
+    // Create acceptance cone at fiber entrance
+    const coneAngle = (acceptanceAngle * Math.PI) / 180;
+    const coneHeight = 2;
+    const coneRadius = Math.tan(coneAngle) * coneHeight;
+    const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 32, 1, true);
+    const coneMaterial = new THREE.MeshPhongMaterial({
+      color: 0x00ff88,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.DoubleSide,
+      emissive: 0x00ff88,
+      emissiveIntensity: 0.2,
+    });
+    const acceptanceCone = new THREE.Mesh(coneGeometry, coneMaterial);
+    acceptanceCone.position.set(-5 - coneHeight / 2, 0, 0);
+    acceptanceCone.rotation.z = -Math.PI / 2;
+    scene.add(acceptanceCone);
+
+    // Add wireframe to acceptance cone
+    const wireframeGeometry = new THREE.EdgesGeometry(coneGeometry);
+    const wireframeMaterial = new THREE.LineBasicMaterial({ color: 0x00ff88, opacity: 0.5, transparent: true });
+    const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+    acceptanceCone.add(wireframe);
+
+    // Create light rays at different incident angles
+    const acceptedRays: THREE.Group[] = [];
+    const rejectedRays: THREE.Group[] = [];
+    const allLightRays: THREE.Group[] = [];
+
+    const createLightRay = (incidentAngle: number, isAccepted: boolean) => {
+      const rayGroup = new THREE.Group();
       const points: THREE.Vector3[] = [];
-      const segments = 20;
-      let currentPos = new THREE.Vector3(-5, 0, 0);
-      let currentAngle = startAngle;
-      const rayLength = 10 / segments;
+      const segments = isAccepted ? 25 : 5;
+      let currentPos = new THREE.Vector3(-6, 0, 0);
+      let currentAngle = incidentAngle;
+      const rayLength = isAccepted ? 11 / segments : 1;
 
       points.push(currentPos.clone());
 
-      for (let i = 0; i < segments; i++) {
-        const nextPos = currentPos.clone();
-        nextPos.x += rayLength * Math.cos(currentAngle);
-        nextPos.y += rayLength * Math.sin(currentAngle);
+      if (isAccepted) {
+        // Light propagates through the fiber with total internal reflection
+        for (let i = 0; i < segments; i++) {
+          const nextPos = currentPos.clone();
+          nextPos.x += rayLength * Math.cos(currentAngle);
+          nextPos.y += rayLength * Math.sin(currentAngle);
 
-        // Check if ray hits boundary (simplified)
-        if (Math.abs(nextPos.y) > 0.25) {
-          // Total internal reflection
-          currentAngle = -currentAngle;
-          nextPos.y = nextPos.y > 0 ? 0.25 : -0.25;
+          // Check if ray hits core boundary
+          if (Math.abs(nextPos.y) > 0.28) {
+            // Total internal reflection
+            currentAngle = -currentAngle;
+            nextPos.y = nextPos.y > 0 ? 0.28 : -0.28;
+          }
+
+          points.push(nextPos);
+          currentPos = nextPos;
         }
-
-        points.push(nextPos);
-        currentPos = nextPos;
+      } else {
+        // Light refracts out of the fiber
+        const refractAngle = incidentAngle * 1.5; // Simplified refraction
+        currentPos.x += rayLength * Math.cos(refractAngle);
+        currentPos.y += rayLength * Math.sin(refractAngle);
+        points.push(currentPos.clone());
       }
 
+      // Create the light ray line
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
       const material = new THREE.LineBasicMaterial({
-        color: color,
-        linewidth: 2,
+        color: isAccepted ? 0x00ffff : 0xff4444,
+        linewidth: 3,
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.9,
       });
       const line = new THREE.Line(geometry, material);
-      scene.add(line);
-      lightRays.push(line);
+      rayGroup.add(line);
+
+      // Add glowing effect to accepted rays
+      if (isAccepted) {
+        const glowMaterial = new THREE.LineBasicMaterial({
+          color: 0x00ffff,
+          transparent: true,
+          opacity: 0.3,
+          linewidth: 6,
+        });
+        const glowLine = new THREE.Line(geometry.clone(), glowMaterial);
+        rayGroup.add(glowLine);
+      }
+
+      scene.add(rayGroup);
+      allLightRays.push(rayGroup);
+      
+      if (isAccepted) {
+        acceptedRays.push(rayGroup);
+      } else {
+        rejectedRays.push(rayGroup);
+      }
     };
 
-    // Create multiple light rays at different angles
-    const maxAngle = (acceptanceAngle * Math.PI) / 180;
-    createLightRay(maxAngle * 0.3, 0x00ffff);
-    createLightRay(maxAngle * 0.6, 0xff00ff);
-    createLightRay(-maxAngle * 0.4, 0x00ff88);
-    createLightRay(maxAngle * 0.8, 0xffff00);
+    // Create rays within and outside acceptance angle
+    const maxAcceptanceAngle = (acceptanceAngle * Math.PI) / 180;
+    
+    // Accepted rays (within acceptance angle)
+    createLightRay(0, true); // Straight ray
+    createLightRay(maxAcceptanceAngle * 0.4, true);
+    createLightRay(maxAcceptanceAngle * 0.7, true);
+    createLightRay(-maxAcceptanceAngle * 0.5, true);
+    createLightRay(-maxAcceptanceAngle * 0.8, true);
+    
+    // Rejected rays (outside acceptance angle)
+    createLightRay(maxAcceptanceAngle * 1.3, false);
+    createLightRay(-maxAcceptanceAngle * 1.4, false);
+    createLightRay(maxAcceptanceAngle * 1.8, false);
 
     // Animation
     let time = 0;
@@ -137,14 +215,28 @@ const Simulation = () => {
       const animationId = requestAnimationFrame(animate);
       time += 0.01;
 
-      // Rotate fiber slightly
-      fiberGroup.rotation.y = Math.sin(time * 0.5) * 0.1;
+      // Update controls
+      controls.update();
 
-      // Animate light rays (pulsing effect)
-      lightRays.forEach((ray, index) => {
-        const material = ray.material as THREE.LineBasicMaterial;
-        material.opacity = 0.5 + Math.sin(time * 2 + index) * 0.3;
+      // Subtle fiber rotation
+      fiberGroup.rotation.y = Math.sin(time * 0.3) * 0.05;
+
+      // Animate accepted light rays (pulsing glow effect)
+      acceptedRays.forEach((rayGroup, index) => {
+        rayGroup.children.forEach((child) => {
+          if (child instanceof THREE.Line) {
+            const material = child.material as THREE.LineBasicMaterial;
+            material.opacity = material.opacity > 0.5 ? 
+              0.7 + Math.sin(time * 3 + index * 0.5) * 0.3 :
+              0.2 + Math.sin(time * 3 + index * 0.5) * 0.1;
+          }
+        });
       });
+
+      // Subtle pulsing of acceptance cone
+      const coneMat = acceptanceCone.material as THREE.MeshPhongMaterial;
+      coneMat.opacity = 0.1 + Math.sin(time * 2) * 0.05;
+      coneMat.emissiveIntensity = 0.15 + Math.sin(time * 2) * 0.1;
 
       renderer.render(scene, camera);
       
@@ -158,8 +250,12 @@ const Simulation = () => {
       scene,
       camera,
       renderer,
+      controls,
       fiber: fiberGroup,
-      lightRays,
+      lightRays: allLightRays,
+      acceptedRays,
+      rejectedRays,
+      acceptanceCone,
       animationId: 0,
     };
 
@@ -176,6 +272,7 @@ const Simulation = () => {
       window.removeEventListener('resize', handleResize);
       if (sceneRef.current) {
         cancelAnimationFrame(sceneRef.current.animationId);
+        sceneRef.current.controls.dispose();
         sceneRef.current.renderer.dispose();
         canvasRef.current?.removeChild(sceneRef.current.renderer.domElement);
       }
@@ -189,61 +286,125 @@ const Simulation = () => {
     // Update core appearance based on n1
     const coreMesh = sceneRef.current.fiber.children[0] as THREE.Mesh;
     const coreMaterial = coreMesh.material as THREE.MeshPhongMaterial;
-    coreMaterial.opacity = 0.4 + (n1 - 1.44) / (1.52 - 1.44) * 0.4; // 0.4 to 0.8
-    coreMaterial.emissiveIntensity = 0.2 + (n1 - 1.44) / (1.52 - 1.44) * 0.3; // 0.2 to 0.5
+    coreMaterial.opacity = 0.4 + (n1 - 1.44) / (1.52 - 1.44) * 0.4;
+    coreMaterial.emissiveIntensity = 0.2 + (n1 - 1.44) / (1.52 - 1.44) * 0.3;
 
     // Update cladding appearance based on n2
     const claddingMesh = sceneRef.current.fiber.children[1] as THREE.Mesh;
     const claddingMaterial = claddingMesh.material as THREE.MeshPhongMaterial;
-    claddingMaterial.opacity = 0.1 + (n2 - 1.42) / (1.50 - 1.42) * 0.2; // 0.1 to 0.3
+    claddingMaterial.opacity = 0.1 + (n2 - 1.42) / (1.50 - 1.42) * 0.2;
+
+    // Update acceptance cone
+    const coneAngle = (acceptanceAngle * Math.PI) / 180;
+    const coneHeight = 2;
+    const coneRadius = Math.tan(coneAngle) * coneHeight;
+    
+    sceneRef.current.scene.remove(sceneRef.current.acceptanceCone);
+    const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 32, 1, true);
+    const coneMaterial = new THREE.MeshPhongMaterial({
+      color: 0x00ff88,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.DoubleSide,
+      emissive: 0x00ff88,
+      emissiveIntensity: 0.2,
+    });
+    const newCone = new THREE.Mesh(coneGeometry, coneMaterial);
+    newCone.position.set(-5 - coneHeight / 2, 0, 0);
+    newCone.rotation.z = -Math.PI / 2;
+    
+    const wireframeGeometry = new THREE.EdgesGeometry(coneGeometry);
+    const wireframeMaterial = new THREE.LineBasicMaterial({ color: 0x00ff88, opacity: 0.5, transparent: true });
+    const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+    newCone.add(wireframe);
+    
+    sceneRef.current.scene.add(newCone);
+    sceneRef.current.acceptanceCone = newCone;
 
     // Remove old light rays
     sceneRef.current.lightRays.forEach((ray) => {
       sceneRef.current!.scene.remove(ray);
     });
     sceneRef.current.lightRays = [];
+    sceneRef.current.acceptedRays = [];
+    sceneRef.current.rejectedRays = [];
 
-    // Create new light rays with updated angles
-    const createLightRay = (startAngle: number, color: number) => {
+    // Create new light rays
+    const createLightRay = (incidentAngle: number, isAccepted: boolean) => {
+      const rayGroup = new THREE.Group();
       const points: THREE.Vector3[] = [];
-      const segments = 20;
-      let currentPos = new THREE.Vector3(-5, 0, 0);
-      let currentAngle = startAngle;
-      const rayLength = 10 / segments;
+      const segments = isAccepted ? 25 : 5;
+      let currentPos = new THREE.Vector3(-6, 0, 0);
+      let currentAngle = incidentAngle;
+      const rayLength = isAccepted ? 11 / segments : 1;
 
       points.push(currentPos.clone());
 
-      for (let i = 0; i < segments; i++) {
-        const nextPos = currentPos.clone();
-        nextPos.x += rayLength * Math.cos(currentAngle);
-        nextPos.y += rayLength * Math.sin(currentAngle);
+      if (isAccepted) {
+        for (let i = 0; i < segments; i++) {
+          const nextPos = currentPos.clone();
+          nextPos.x += rayLength * Math.cos(currentAngle);
+          nextPos.y += rayLength * Math.sin(currentAngle);
 
-        if (Math.abs(nextPos.y) > 0.25) {
-          currentAngle = -currentAngle;
-          nextPos.y = nextPos.y > 0 ? 0.25 : -0.25;
+          if (Math.abs(nextPos.y) > 0.28) {
+            currentAngle = -currentAngle;
+            nextPos.y = nextPos.y > 0 ? 0.28 : -0.28;
+          }
+
+          points.push(nextPos);
+          currentPos = nextPos;
         }
-
-        points.push(nextPos);
-        currentPos = nextPos;
+      } else {
+        const refractAngle = incidentAngle * 1.5;
+        currentPos.x += rayLength * Math.cos(refractAngle);
+        currentPos.y += rayLength * Math.sin(refractAngle);
+        points.push(currentPos.clone());
       }
 
       const geometry = new THREE.BufferGeometry().setFromPoints(points);
       const material = new THREE.LineBasicMaterial({
-        color: color,
-        linewidth: 2,
+        color: isAccepted ? 0x00ffff : 0xff4444,
+        linewidth: 3,
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.9,
       });
       const line = new THREE.Line(geometry, material);
-      sceneRef.current!.scene.add(line);
-      sceneRef.current!.lightRays.push(line);
+      rayGroup.add(line);
+
+      if (isAccepted) {
+        const glowMaterial = new THREE.LineBasicMaterial({
+          color: 0x00ffff,
+          transparent: true,
+          opacity: 0.3,
+          linewidth: 6,
+        });
+        const glowLine = new THREE.Line(geometry.clone(), glowMaterial);
+        rayGroup.add(glowLine);
+      }
+
+      sceneRef.current!.scene.add(rayGroup);
+      sceneRef.current!.lightRays.push(rayGroup);
+      
+      if (isAccepted) {
+        sceneRef.current!.acceptedRays.push(rayGroup);
+      } else {
+        sceneRef.current!.rejectedRays.push(rayGroup);
+      }
     };
 
-    const maxAngle = (acceptanceAngle * Math.PI) / 180;
-    createLightRay(maxAngle * 0.3, 0x00ffff);
-    createLightRay(maxAngle * 0.6, 0xff00ff);
-    createLightRay(-maxAngle * 0.4, 0x00ff88);
-    createLightRay(maxAngle * 0.8, 0xffff00);
+    const maxAcceptanceAngle = (acceptanceAngle * Math.PI) / 180;
+    
+    // Accepted rays
+    createLightRay(0, true);
+    createLightRay(maxAcceptanceAngle * 0.4, true);
+    createLightRay(maxAcceptanceAngle * 0.7, true);
+    createLightRay(-maxAcceptanceAngle * 0.5, true);
+    createLightRay(-maxAcceptanceAngle * 0.8, true);
+    
+    // Rejected rays
+    createLightRay(maxAcceptanceAngle * 1.3, false);
+    createLightRay(-maxAcceptanceAngle * 1.4, false);
+    createLightRay(maxAcceptanceAngle * 1.8, false);
   }, [n1, n2, acceptanceAngle]);
 
   return (
@@ -335,6 +496,7 @@ const Simulation = () => {
                   className="w-full h-[700px] rounded-lg border border-primary/20 bg-background/50"
                 />
                 <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+                  <p className="text-xs text-primary/70 mb-2">🖱️ Click and drag to rotate • Scroll to zoom • Right-click to pan</p>
                   <p className="flex items-center gap-2">
                     <span className="w-8 h-1 bg-cyan-400 rounded"></span>
                     <span>Core (n₁ = {n1.toFixed(3)})</span>
@@ -344,8 +506,16 @@ const Simulation = () => {
                     <span>Cladding (n₂ = {n2.toFixed(3)})</span>
                   </p>
                   <p className="flex items-center gap-2">
-                    <span className="w-8 h-1 bg-gradient-to-r from-cyan-400 via-purple-400 to-yellow-400 rounded"></span>
-                    <span>Light rays showing total internal reflection</span>
+                    <span className="w-8 h-1 bg-cyan-400 rounded shadow-[0_0_10px_rgba(0,255,255,0.5)]"></span>
+                    <span>Accepted rays (within acceptance angle)</span>
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <span className="w-8 h-1 bg-red-500 rounded"></span>
+                    <span>Rejected rays (outside acceptance angle)</span>
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <span className="w-8 h-1 bg-green-400 opacity-30 rounded"></span>
+                    <span>Acceptance cone (±{acceptanceAngle.toFixed(2)}°)</span>
                   </p>
                 </div>
               </CardContent>
