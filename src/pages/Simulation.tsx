@@ -31,7 +31,7 @@ const Simulation = () => {
     
     const camera = new THREE.PerspectiveCamera(
       75,
-      canvasRef.current.clientWidth / 500,
+      canvasRef.current.clientWidth / 700,
       0.1,
       1000
     );
@@ -39,7 +39,7 @@ const Simulation = () => {
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(canvasRef.current.clientWidth, 500);
+    renderer.setSize(canvasRef.current.clientWidth, 700);
     canvasRef.current.appendChild(renderer.domElement);
 
     // Lighting
@@ -166,9 +166,9 @@ const Simulation = () => {
     // Handle resize
     const handleResize = () => {
       if (!canvasRef.current) return;
-      camera.aspect = canvasRef.current.clientWidth / 500;
+      camera.aspect = canvasRef.current.clientWidth / 700;
       camera.updateProjectionMatrix();
-      renderer.setSize(canvasRef.current.clientWidth, 500);
+      renderer.setSize(canvasRef.current.clientWidth, 700);
     };
     window.addEventListener('resize', handleResize);
 
@@ -182,9 +182,20 @@ const Simulation = () => {
     };
   }, []);
 
-  // Update light rays when refractive indices change
+  // Update light rays and fiber appearance when refractive indices change
   useEffect(() => {
     if (!sceneRef.current) return;
+
+    // Update core appearance based on n1
+    const coreMesh = sceneRef.current.fiber.children[0] as THREE.Mesh;
+    const coreMaterial = coreMesh.material as THREE.MeshPhongMaterial;
+    coreMaterial.opacity = 0.4 + (n1 - 1.44) / (1.52 - 1.44) * 0.4; // 0.4 to 0.8
+    coreMaterial.emissiveIntensity = 0.2 + (n1 - 1.44) / (1.52 - 1.44) * 0.3; // 0.2 to 0.5
+
+    // Update cladding appearance based on n2
+    const claddingMesh = sceneRef.current.fiber.children[1] as THREE.Mesh;
+    const claddingMaterial = claddingMesh.material as THREE.MeshPhongMaterial;
+    claddingMaterial.opacity = 0.1 + (n2 - 1.42) / (1.50 - 1.42) * 0.2; // 0.1 to 0.3
 
     // Remove old light rays
     sceneRef.current.lightRays.forEach((ray) => {
@@ -321,7 +332,7 @@ const Simulation = () => {
               <CardContent>
                 <div 
                   ref={canvasRef} 
-                  className="w-full h-[500px] rounded-lg border border-primary/20 bg-background/50"
+                  className="w-full h-[700px] rounded-lg border border-primary/20 bg-background/50"
                 />
                 <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                   <p className="flex items-center gap-2">
