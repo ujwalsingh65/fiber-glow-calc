@@ -1,12 +1,14 @@
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { useState, useEffect, useRef } from "react";
 
 const Simulation = () => {
-  const [n1, setN1] = useState(1.48); // Core refractive index
-  const [n2, setN2] = useState(1.46); // Cladding refractive index
+  const [n1, setN1] = useState(1.48);
+  const [n2, setN2] = useState(1.46);
+  const [simValue, setSimValue] = useState(50);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
 
@@ -379,6 +381,44 @@ const Simulation = () => {
                   <p className="text-2xl font-bold text-primary">
                     {acceptanceAngle.toFixed(2)}°
                   </p>
+                </div>
+              </div>
+
+              {/* Simulation Value Bar */}
+              <div className="relative p-5 rounded-xl border border-primary/30 overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(240 10% 6%), hsl(260 15% 10%))' }}>
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5 pointer-events-none" />
+                <Label className="text-sm font-semibold tracking-wide uppercase text-muted-foreground mb-4 block">
+                  Set Simulation Value
+                </Label>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 relative">
+                    <Slider
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={[simValue]}
+                      onValueChange={(v) => setSimValue(v[0])}
+                      className="w-full [&_[role=slider]]:h-5 [&_[role=slider]]:w-5 [&_[role=slider]]:shadow-[0_0_10px_hsl(var(--primary)/0.7)] [&_[role=slider]]:border-primary [&_[role=slider]]:bg-primary"
+                    />
+                    <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground/60 font-mono">
+                      <span>0</span>
+                      <span>25</span>
+                      <span>50</span>
+                      <span>75</span>
+                      <span>100</span>
+                    </div>
+                  </div>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={simValue}
+                    onChange={(e) => {
+                      const v = Math.max(0, Math.min(100, Number(e.target.value)));
+                      setSimValue(v);
+                    }}
+                    className="w-20 text-center font-mono font-bold text-primary bg-background/80 border-primary/30 focus:border-primary focus:shadow-[0_0_12px_hsl(var(--primary)/0.4)]"
+                  />
                 </div>
               </div>
 
