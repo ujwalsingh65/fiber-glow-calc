@@ -2,19 +2,39 @@ import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useState, useEffect, useRef } from "react";
+
+const LED_PRESETS: Record<string, { name: string; wavelength: number; color: string; rgb: string; glowRgba: string }> = {
+  red: { name: "Red", wavelength: 630, color: "#ff2020", rgb: "255,32,32", glowRgba: "rgba(255,32,32,0.4)" },
+  orange: { name: "Orange", wavelength: 590, color: "#ff8c00", rgb: "255,140,0", glowRgba: "rgba(255,140,0,0.4)" },
+  yellow: { name: "Yellow", wavelength: 570, color: "#ffd700", rgb: "255,215,0", glowRgba: "rgba(255,215,0,0.4)" },
+  green: { name: "Green", wavelength: 525, color: "#00e040", rgb: "0,224,64", glowRgba: "rgba(0,224,64,0.4)" },
+  blue: { name: "Blue", wavelength: 470, color: "#3080ff", rgb: "48,128,255", glowRgba: "rgba(48,128,255,0.4)" },
+  violet: { name: "Violet", wavelength: 405, color: "#9040ff", rgb: "144,64,255", glowRgba: "rgba(144,64,255,0.4)" },
+  white: { name: "White", wavelength: 550, color: "#f0f0ff", rgb: "240,240,255", glowRgba: "rgba(240,240,255,0.4)" },
+  ir: { name: "Infrared (IR)", wavelength: 850, color: "#cc2020", rgb: "204,32,32", glowRgba: "rgba(204,32,32,0.3)" },
+};
 
 const Simulation = () => {
   const [n1, setN1] = useState(1.48);
   const [n2, setN2] = useState(1.46);
   const [simValue, setSimValue] = useState(50);
+  const [ledColor, setLedColor] = useState("red");
+  const [wavelength, setWavelength] = useState(630);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
 
   // Calculate numerical aperture and acceptance angle
   const numericalAperture = Math.sqrt(n1 * n1 - n2 * n2);
   const acceptanceAngle = (Math.asin(numericalAperture) * 180) / Math.PI;
+  const led = LED_PRESETS[ledColor];
+
+  // Sync wavelength when preset changes
+  useEffect(() => {
+    setWavelength(LED_PRESETS[ledColor].wavelength);
+  }, [ledColor]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -22,6 +42,10 @@ const Simulation = () => {
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    const ledColorHex = led.color;
+    const ledRgb = led.rgb;
+    const ledGlowRgba = led.glowRgba;
 
     // Set canvas size
     const width = canvas.width = canvas.offsetWidth;
@@ -94,9 +118,9 @@ const Simulation = () => {
       draw(ctx: CanvasRenderingContext2D, time: number) {
         if (this.path.length < 2) return;
 
-        // Draw glow
+         // Draw glow
         ctx.shadowBlur = 15;
-        ctx.shadowColor = this.isGuided ? '#ffdd00' : '#ff3333';
+        ctx.shadowColor = this.isGuided ? ledColorHex : '#ff3333';
         
         // Draw main ray
         ctx.beginPath();
@@ -106,7 +130,7 @@ const Simulation = () => {
           ctx.lineTo(this.path[i].x, this.path[i].y);
         }
 
-        ctx.strokeStyle = this.isGuided ? '#ffdd00' : '#ff3333';
+        ctx.strokeStyle = this.isGuided ? ledColorHex : '#ff3333';
         ctx.lineWidth = 3;
         ctx.stroke();
 
@@ -114,7 +138,7 @@ const Simulation = () => {
         if (this.isGuided && this.active) {
           const pulseIntensity = 0.5 + Math.sin(time * 3 + this.offset) * 0.3;
           ctx.shadowBlur = 20 * pulseIntensity;
-          ctx.strokeStyle = `rgba(255, 221, 0, ${pulseIntensity})`;
+          ctx.strokeStyle = `rgba(${ledRgb}, ${pulseIntensity})`;
           ctx.lineWidth = 5;
           ctx.stroke();
         }
@@ -194,34 +218,44 @@ const Simulation = () => {
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Draw light source (sodium lamp)
+      // Draw light source (LED)
       const lampX = coneStartX;
       const lampY = fiberCenterY;
-      const lampRadius = 12;
-      const glowRadius = 30;
+      const lampRadius = 14;
+      const glowRadius = 32;
 
       // Outer glow
       const glowGradient = ctx.createRadialGradient(lampX, lampY, lampRadius, lampX, lampY, glowRadius);
-      glowGradient.addColorStop(0, 'rgba(255, 221, 0, 0.4)');
-      glowGradient.addColorStop(1, 'rgba(255, 221, 0, 0)');
+      glowGradient.addColorStop(0, ledGlowRgba);
+      glowGradient.addColorStop(1, `rgba(${ledRgb}, 0)`);
       ctx.fillStyle = glowGradient;
       ctx.beginPath();
       ctx.arc(lampX, lampY, glowRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Lamp body
-      const lampGradient = ctx.createRadialGradient(lampX, lampY, 0, lampX, lampY, lampRadius);
-      lampGradient.addColorStop(0, '#ffee88');
-      lampGradient.addColorStop(1, '#ffdd00');
-      ctx.fillStyle = lampGradient;
+      // LED body (rounded rect shape)
+      ctx.fillStyle = '#222';
       ctx.beginPath();
-      ctx.arc(lampX, lampY, lampRadius, 0, Math.PI * 2);
+      ctx.roundRect(lampX - 10, lampY - 16, 20, 32, 4);
+      ctx.fill();
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // LED lens
+      const lensGradient = ctx.createRadialGradient(lampX, lampY, 0, lampX, lampY, 8);
+      lensGradient.addColorStop(0, '#ffffff');
+      lensGradient.addColorStop(0.3, ledColorHex);
+      lensGradient.addColorStop(1, ledColorHex);
+      ctx.fillStyle = lensGradient;
+      ctx.beginPath();
+      ctx.arc(lampX, lampY, 8, 0, Math.PI * 2);
       ctx.fill();
 
       // Pulsing effect
       const pulseIntensity = 0.7 + Math.sin(time * 4) * 0.3;
       ctx.shadowBlur = 20 * pulseIntensity;
-      ctx.shadowColor = '#ffdd00';
+      ctx.shadowColor = ledColorHex;
       ctx.fill();
       ctx.shadowBlur = 0;
 
@@ -260,9 +294,9 @@ const Simulation = () => {
       ctx.shadowColor = '#9966ff';
       ctx.fillText('Cladding (n₂)', fiberStartX + 20, fiberCenterY + claddingHeight / 2 - 10);
 
-      ctx.fillStyle = '#ffdd00';
-      ctx.shadowColor = '#ffdd00';
-      ctx.fillText('Sodium Lamp', lampX - 40, lampY + glowRadius + 15);
+      ctx.fillStyle = ledColorHex;
+      ctx.shadowColor = ledColorHex;
+      ctx.fillText(`LED (${wavelength}nm)`, lampX - 40, lampY + glowRadius + 15);
 
       ctx.fillStyle = '#00ff88';
       ctx.shadowColor = '#00ff88';
@@ -280,13 +314,13 @@ const Simulation = () => {
       ctx.font = '12px Arial';
       
       // Guided ray
-      ctx.strokeStyle = '#ffdd00';
+      ctx.strokeStyle = ledColorHex;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(legendX, legendY + 10);
       ctx.lineTo(legendX + 30, legendY + 10);
       ctx.stroke();
-      ctx.fillStyle = '#ffdd00';
+      ctx.fillStyle = ledColorHex;
       ctx.fillText('Guided Ray (TIR)', legendX + 40, legendY + 14);
 
       // Lost ray
@@ -313,7 +347,7 @@ const Simulation = () => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [acceptanceAngle]);
+  }, [acceptanceAngle, led, wavelength]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -332,6 +366,70 @@ const Simulation = () => {
                 className="w-full rounded-lg border-2 border-primary/30 shadow-lg shadow-primary/20"
                 style={{ height: '500px' }}
               />
+
+              {/* LED Color & Wavelength Controls */}
+              <div className="relative p-5 rounded-xl border border-primary/30 overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(240 10% 6%), hsl(260 15% 10%))' }}>
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5 pointer-events-none" />
+                <Label className="text-sm font-semibold tracking-wide uppercase text-muted-foreground mb-4 block">
+                  LED Light Source
+                </Label>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {/* Color Select */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">LED Color</Label>
+                    <Select value={ledColor} onValueChange={setLedColor}>
+                      <SelectTrigger className="bg-background/80 border-primary/30">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-3 h-3 rounded-full" style={{ background: led.color, boxShadow: `0 0 6px ${led.color}` }} />
+                          <SelectValue />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(LED_PRESETS).map(([key, preset]) => (
+                          <SelectItem key={key} value={key}>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-block w-3 h-3 rounded-full" style={{ background: preset.color, boxShadow: `0 0 6px ${preset.color}` }} />
+                              {preset.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Wavelength Slider */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Wavelength (nm)</Label>
+                    <Slider
+                      min={380}
+                      max={950}
+                      step={5}
+                      value={[wavelength]}
+                      onValueChange={(v) => setWavelength(v[0])}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Wavelength Input */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Wavelength Value</Label>
+                    <Input
+                      type="number"
+                      min={380}
+                      max={950}
+                      value={wavelength}
+                      onChange={(e) => setWavelength(Math.max(380, Math.min(950, Number(e.target.value))))}
+                      className="font-mono font-bold text-center bg-background/80 border-primary/30"
+                    />
+                  </div>
+                </div>
+
+                {/* Color bar preview */}
+                <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="inline-block w-5 h-5 rounded-full border border-primary/30" style={{ background: led.color, boxShadow: `0 0 10px ${led.color}` }} />
+                  <span>{led.name} — {wavelength} nm</span>
+                </div>
+              </div>
 
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-3">
@@ -437,9 +535,10 @@ const Simulation = () => {
               <div className="p-4 bg-muted/30 rounded-lg border border-border">
                 <h3 className="font-semibold mb-3 text-foreground">How it works:</h3>
                 <div className="space-y-2 text-sm">
-                  <p>• <strong className="text-yellow-400">Yellow rays</strong> entering within the acceptance cone undergo <strong>Total Internal Reflection (TIR)</strong> and bounce inside the core.</p>
+                  <p>• <strong style={{ color: led.color }}>Colored rays</strong> entering within the acceptance cone undergo <strong>Total Internal Reflection (TIR)</strong> and bounce inside the core.</p>
                   <p>• <strong className="text-red-400">Red rays</strong> entering outside the acceptance angle refract out and are lost.</p>
                   <p>• The <strong className="text-green-400">acceptance cone</strong> shows the region where light can successfully enter and propagate.</p>
+                  <p>• Change the <strong>LED color</strong> and <strong>wavelength</strong> to see different light sources.</p>
                   <p>• Adjust n₁ and n₂ to see how NA and acceptance angle change in real-time.</p>
                 </div>
               </div>
