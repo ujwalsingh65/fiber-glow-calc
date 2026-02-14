@@ -6,6 +6,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { useState, useEffect, useRef } from "react";
 
+const FIBER_PRESETS: Record<string, { name: string; n1: number; n2: number; description: string }> = {
+  "smf-28": { name: "SMF-28 (Single-Mode)", n1: 1.4681, n2: 1.4629, description: "Standard single-mode fiber, 8.2µm core" },
+  "om1": { name: "OM1 (Multi-Mode 62.5µm)", n1: 1.496, n2: 1.471, description: "Legacy multi-mode, 62.5µm core" },
+  "om2": { name: "OM2 (Multi-Mode 50µm)", n1: 1.496, n2: 1.479, description: "Multi-mode 50µm core, 1Gb Ethernet" },
+  "om3": { name: "OM3 (Multi-Mode 50µm)", n1: 1.482, n2: 1.462, description: "Laser-optimized 50µm, 10Gb Ethernet" },
+  "pof": { name: "POF (Plastic Fiber)", n1: 1.492, n2: 1.417, description: "Plastic optical fiber, 1mm core" },
+  "custom": { name: "Custom", n1: 1.48, n2: 1.46, description: "Set your own values" },
+};
+
 const LED_PRESETS: Record<string, { name: string; wavelength: number; color: string; rgb: string; glowRgba: string }> = {
   red: { name: "Red", wavelength: 630, color: "#ff2020", rgb: "255,32,32", glowRgba: "rgba(255,32,32,0.4)" },
   orange: { name: "Orange", wavelength: 590, color: "#ff8c00", rgb: "255,140,0", glowRgba: "rgba(255,140,0,0.4)" },
@@ -18,6 +27,7 @@ const LED_PRESETS: Record<string, { name: string; wavelength: number; color: str
 };
 
 const Simulation = () => {
+  const [fiberType, setFiberType] = useState("custom");
   const [n1, setN1] = useState(1.48);
   const [n2, setN2] = useState(1.46);
   const [simValue, setSimValue] = useState(50);
@@ -431,6 +441,39 @@ const Simulation = () => {
                 </div>
               </div>
 
+              {/* Fiber Type Presets */}
+              <div className="relative p-5 rounded-xl border border-primary/30 overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(240 10% 6%), hsl(260 15% 10%))' }}>
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5 pointer-events-none" />
+                <Label className="text-sm font-semibold tracking-wide uppercase text-muted-foreground mb-4 block">
+                  Fiber Type Preset
+                </Label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Select Fiber Type</Label>
+                    <Select value={fiberType} onValueChange={(val) => {
+                      setFiberType(val);
+                      if (val !== "custom") {
+                        const preset = FIBER_PRESETS[val];
+                        setN1(preset.n1);
+                        setN2(preset.n2);
+                      }
+                    }}>
+                      <SelectTrigger className="bg-background/80 border-primary/30">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(FIBER_PRESETS).map(([key, preset]) => (
+                          <SelectItem key={key} value={key}>{preset.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <p className="text-xs text-muted-foreground italic">{FIBER_PRESETS[fiberType].description}</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-3">
                   <Label htmlFor="n1" className="text-base font-semibold">
@@ -442,7 +485,7 @@ const Simulation = () => {
                     max={1.52}
                     step={0.001}
                     value={[n1]}
-                    onValueChange={(value) => setN1(value[0])}
+                    onValueChange={(value) => { setN1(value[0]); setFiberType("custom"); }}
                     className="w-full"
                   />
                 </div>
@@ -457,7 +500,7 @@ const Simulation = () => {
                     max={1.50}
                     step={0.001}
                     value={[n2]}
-                    onValueChange={(value) => setN2(value[0])}
+                    onValueChange={(value) => { setN2(value[0]); setFiberType("custom"); }}
                     className="w-full"
                   />
                 </div>
