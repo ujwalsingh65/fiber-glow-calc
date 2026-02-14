@@ -4,7 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Play, Pause, RotateCcw } from "lucide-react";
 
 const FIBER_PRESETS: Record<string, { name: string; n1: number; n2: number; description: string }> = {
   "smf-28": { name: "SMF-28 (Single-Mode)", n1: 1.4681, n2: 1.4629, description: "Standard single-mode fiber, 8.2µm core" },
@@ -35,6 +37,9 @@ const Simulation = () => {
   const [wavelength, setWavelength] = useState(630);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
+  const isPausedRef = useRef(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
   // Calculate numerical aperture and acceptance angle
   const numericalAperture = Math.sqrt(n1 * n1 - n2 * n2);
@@ -42,6 +47,11 @@ const Simulation = () => {
   const led = LED_PRESETS[ledColor];
 
   // Sync wavelength when preset changes
+  // Sync pause ref
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
   useEffect(() => {
     setWavelength(LED_PRESETS[ledColor].wavelength);
   }, [ledColor]);
@@ -176,8 +186,9 @@ const Simulation = () => {
 
     // Animation loop
     const animate = () => {
-      time += 0.016;
-      
+      if (!isPausedRef.current) {
+        time += 0.016;
+      }
       ctx.fillStyle = '#0a0a14';
       ctx.fillRect(0, 0, width, height);
 
@@ -269,27 +280,33 @@ const Simulation = () => {
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Activate rays sequentially
-      if (time - lastRayTime > 0.5 && rayIndex < rays.length) {
-        rays[rayIndex].active = true;
-        rayIndex++;
-        lastRayTime = time;
-      }
+      if (!isPausedRef.current) {
+        // Activate rays sequentially
+        if (time - lastRayTime > 0.5 && rayIndex < rays.length) {
+          rays[rayIndex].active = true;
+          rayIndex++;
+          lastRayTime = time;
+        }
 
-      // Reset animation when all rays are done
-      if (rayIndex >= rays.length && rays.every(ray => !ray.active)) {
-        rayIndex = 0;
+        // Reset animation when all rays are done
+        if (rayIndex >= rays.length && rays.every(ray => !ray.active)) {
+          rayIndex = 0;
+          rays.forEach(ray => {
+            ray.x = fiberStartX - 80;
+            ray.y = fiberCenterY;
+            ray.path = [{ x: ray.x, y: ray.y }];
+            ray.active = false;
+          });
+        }
+
+        // Update rays
         rays.forEach(ray => {
-          ray.x = fiberStartX - 80;
-          ray.y = fiberCenterY;
-          ray.path = [{ x: ray.x, y: ray.y }];
-          ray.active = false;
+          ray.update();
         });
       }
 
-      // Update and draw rays
+      // Draw rays (always, even when paused)
       rays.forEach(ray => {
-        ray.update();
         ray.draw(ctx, time);
       });
 
@@ -357,7 +374,7 @@ const Simulation = () => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [acceptanceAngle, led, wavelength]);
+  }, [acceptanceAngle, led, wavelength, resetKey]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -376,6 +393,26 @@ const Simulation = () => {
                 className="w-full rounded-lg border-2 border-primary/30 shadow-lg shadow-primary/20"
                 style={{ height: '500px' }}
               />
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPaused(!isPaused)}
+                  className="gap-2 border-primary/30 hover:bg-primary/10"
+                >
+                  {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                  {isPaused ? "Play" : "Pause"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setIsPaused(false); setResetKey(k => k + 1); }}
+                  className="gap-2 border-primary/30 hover:bg-primary/10"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Replay
+                </Button>
+              </div>
 
               {/* LED Color & Wavelength Controls */}
               <div className="relative p-5 rounded-xl border border-primary/30 overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(240 10% 6%), hsl(260 15% 10%))' }}>
