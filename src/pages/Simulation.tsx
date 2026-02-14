@@ -41,9 +41,10 @@ const Simulation = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [resetKey, setResetKey] = useState(0);
 
-  // Calculate numerical aperture and acceptance angle
-  const numericalAperture = Math.sqrt(n1 * n1 - n2 * n2);
-  const acceptanceAngle = (Math.asin(numericalAperture) * 180) / Math.PI;
+  // Calculate numerical aperture, acceptance angle, and critical angle
+  const numericalAperture = Math.sqrt(Math.max(0, n1 * n1 - n2 * n2));
+  const acceptanceAngle = numericalAperture <= 1 ? (Math.asin(numericalAperture) * 180) / Math.PI : 90;
+  const criticalAngle = n2 < n1 ? (Math.asin(n2 / n1) * 180) / Math.PI : 90;
   const led = LED_PRESETS[ledColor];
 
   // Sync wavelength when preset changes
@@ -516,34 +517,64 @@ const Simulation = () => {
                   <Label htmlFor="n1" className="text-base font-semibold">
                     Core Refractive Index (n₁): {n1.toFixed(3)}
                   </Label>
-                  <Slider
-                    id="n1"
-                    min={1.44}
-                    max={1.52}
-                    step={0.001}
-                    value={[n1]}
-                    onValueChange={(value) => { setN1(value[0]); setFiberType("custom"); }}
-                    className="w-full"
-                  />
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      id="n1"
+                      min={1.44}
+                      max={1.52}
+                      step={0.001}
+                      value={[n1]}
+                      onValueChange={(value) => { setN1(value[0]); setFiberType("custom"); }}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      min={1.44}
+                      max={1.52}
+                      step={0.001}
+                      value={n1}
+                      onChange={(e) => {
+                        const v = Math.max(1.44, Math.min(1.52, Number(e.target.value)));
+                        setN1(v);
+                        setFiberType("custom");
+                      }}
+                      className="w-24 text-center font-mono font-bold text-primary bg-background/80 border-primary/30"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-3">
                   <Label htmlFor="n2" className="text-base font-semibold">
                     Cladding Refractive Index (n₂): {n2.toFixed(3)}
                   </Label>
-                  <Slider
-                    id="n2"
-                    min={1.42}
-                    max={1.50}
-                    step={0.001}
-                    value={[n2]}
-                    onValueChange={(value) => { setN2(value[0]); setFiberType("custom"); }}
-                    className="w-full"
-                  />
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      id="n2"
+                      min={1.42}
+                      max={1.50}
+                      step={0.001}
+                      value={[n2]}
+                      onValueChange={(value) => { setN2(value[0]); setFiberType("custom"); }}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      min={1.42}
+                      max={1.50}
+                      step={0.001}
+                      value={n2}
+                      onChange={(e) => {
+                        const v = Math.max(1.42, Math.min(1.50, Number(e.target.value)));
+                        setN2(v);
+                        setFiberType("custom");
+                      }}
+                      className="w-24 text-center font-mono font-bold text-primary bg-background/80 border-primary/30"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 p-4 bg-muted/50 rounded-lg border border-border">
+              <div className="grid gap-4 md:grid-cols-3 p-4 bg-muted/50 rounded-lg border border-border">
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">
                     Numerical Aperture (NA):
@@ -558,6 +589,14 @@ const Simulation = () => {
                   </p>
                   <p className="text-2xl font-bold text-primary">
                     {acceptanceAngle.toFixed(2)}°
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Critical Angle (θ꜀):
+                  </p>
+                  <p className="text-2xl font-bold text-primary">
+                    {criticalAngle.toFixed(2)}°
                   </p>
                 </div>
               </div>
@@ -609,6 +648,9 @@ const Simulation = () => {
                 </p>
                 <p className="font-mono text-sm mt-2 text-accent-foreground">
                   θₐ = sin⁻¹(NA)
+                </p>
+                <p className="font-mono text-sm mt-2 text-accent-foreground">
+                  θ꜀ = sin⁻¹(n₂/n₁)
                 </p>
               </div>
 
